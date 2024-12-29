@@ -19,6 +19,7 @@ import "ace-builds/src-noconflict/mode-json";
 import "ace-builds/src-noconflict/mode-xml";
 import "ace-builds/src-noconflict/mode-yaml";
 import "ace-builds/src-noconflict/theme-monokai";
+import { encryptPayload , clientEncryptAndServerDecryptTest } from "./crypto_helper";
 
 const NODE_TYPE_DEFINITIONS = {
     node_type_definitions: [
@@ -193,11 +194,65 @@ const App = () => {
         });
 
         console.log("Serialized Nodes:", JSON.stringify(allNodes, null, 2));
+        return allNodes; // Return the serialized nodes
     };
 
-    const runFlow = () => {
+    const [isProcessing, setIsProcessing] = useState(false); // Optional loading state
 
-        serializeNodes(nodes, edges);
+
+    const runFlow = async () => {
+        const keyBase64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="; // Base64-encoded key
+        const plaintext = JSON.stringify({
+            request_params: {
+                request_type: "command_execution",
+                command_params: {
+                    command_type: "run_bash_script",
+                    run_mode: "async",
+                    command_data: {
+                        run_bash_script_data: {
+                            script_data: "ZWNobyAnSGVsbG8sIFdvcmxkIScK",
+                            script_data_type: "bash_script_b64_utf8",
+                        },
+                    },
+                    command_progress_info_params: {
+                        stream_progress_type: "realtime",
+                    },
+                },
+            },
+        });
+
+        console.log("Original Plaintext:", plaintext);
+
+        try {
+            // Encrypt the payload
+            const encryptedPayload = await encryptPayload(keyBase64, plaintext);
+            console.log("Encrypted Payload:", encryptedPayload);
+
+            // Serialize the encrypted payload as a string
+            const serializedPayload = JSON.stringify(encryptedPayload);
+
+
+            // Send the serialized payload to the server
+            const response = await fetch("http://127.0.0.1:9191/task_agent", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(serializedPayload), // Wrap as a string
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP error! Status: ${response.status}, Details: ${errorText}`);
+            }
+
+            const result = await response.json();
+            console.log("Server Response:", result);
+            alert("Payload sent and processed successfully!");
+        } catch (error) {
+            console.error("Error during encryption or sending payload:", error.message);
+            alert(`Failed to send payload: ${error.message}`);
+        }
     };
 
     return (
