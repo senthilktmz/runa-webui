@@ -255,15 +255,72 @@ const App = () => {
         }
     };
 
+    const runWebSocketFlow = async () => {
+        const keyBase64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="; // Base64-encoded key
+        const plaintext = JSON.stringify({
+            request_params: {
+                request_type: "command_execution",
+                command_params: {
+                    command_type: "run_bash_script",
+                    run_mode: "async",
+                    command_data: {
+                        run_bash_script_data: {
+                            script_data: "ZWNobyAnSGVsbG8sIFdvcmxkIScK",
+                            script_data_type: "bash_script_b64_utf8",
+                        },
+                    },
+                    command_progress_info_params: {
+                        stream_progress_type: "realtime",
+                    },
+                },
+            },
+        });
+
+        console.log("Original Plaintext:", plaintext);
+
+        try {
+            // Encrypt the payload
+            const encryptedPayload = await encryptPayload(keyBase64, plaintext);
+            console.log("Encrypted Payload:", encryptedPayload);
+
+            // Open a WebSocket connection
+            const ws = new WebSocket("ws://127.0.0.1:9191/exec_task_set");
+
+            ws.onopen = () => {
+                console.log("WebSocket connection opened.");
+                // Send the encrypted payload
+                ws.send(JSON.stringify(encryptedPayload));
+                console.log("Encrypted payload sent.");
+            };
+
+            ws.onmessage = (event) => {
+                console.log("Message from server:", event.data);
+            };
+
+            ws.onclose = () => {
+                console.log("WebSocket connection closed.");
+            };
+
+            ws.onerror = (error) => {
+                console.error("WebSocket error:", error);
+            };
+        } catch (error) {
+            console.error("Error during WebSocket execution:", error.message);
+        }
+    };
+
     return (
         <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-            <div style={{ padding: "10px", textAlign: "center" }}>
+            <div style={{padding: "10px", textAlign: "center"}}>
                 <button onClick={addNode}>+ Add Node</button>
-                <button onClick={runFlow} style={{ marginLeft: "10px" }}>
+                <button onClick={runFlow} style={{marginLeft: "10px"}}>
                     Run
                 </button>
+                <button onClick={runWebSocketFlow} style={{marginLeft: "10px"}}>
+                    exec_task_set
+                </button>
             </div>
-            <div style={{ display: "flex", height: "100%" }}>
+            <div style={{display: "flex", height: "100%"}}>
                 <div style={{ flex: 3 }}>
                     <ReactFlow
                         nodes={nodes}
