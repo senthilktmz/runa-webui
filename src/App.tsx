@@ -255,8 +255,9 @@ const App = () => {
         }
     };
 
+
     const runWebSocketFlow = async () => {
-        const keyBase64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="; // Base64-encoded key
+        const keyBase64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
         const plaintext = JSON.stringify({
             request_params: {
                 request_type: "command_execution",
@@ -276,36 +277,42 @@ const App = () => {
             },
         });
 
-        console.log("Original Plaintext:", plaintext);
+        let messageCount = 0;
 
         try {
-            // Encrypt the payload
             const encryptedPayload = await encryptPayload(keyBase64, plaintext);
-            console.log("Encrypted Payload:", encryptedPayload);
+            console.log("Encrypted payload ready");
 
-            // Open a WebSocket connection
             const ws = new WebSocket("ws://127.0.0.1:9191/exec_task_set");
 
-            ws.onopen = () => {
-                console.log("WebSocket connection opened.");
-                // Send the encrypted payload
-                ws.send(JSON.stringify(encryptedPayload));
-                console.log("Encrypted payload sent.");
+            // Setup message handler before sending
+            ws.onmessage = (event) => {
+                messageCount++;
+                console.log(`\nMessage ${messageCount} received:`, event.data);
+                try {
+                    const jsonData = JSON.parse(event.data);
+                    console.log('Parsed JSON:', JSON.stringify(jsonData, null, 2));
+                } catch {
+                    console.log('Raw message (non-JSON):', event.data);
+                }
             };
 
-            ws.onmessage = (event) => {
-                console.log("Message from server:", event.data);
+            ws.onopen = () => {
+                console.log("WebSocket Connected");
+                ws.send(JSON.stringify(encryptedPayload));
+                console.log("Sent encrypted payload");
             };
 
             ws.onclose = () => {
-                console.log("WebSocket connection closed.");
+                console.log(`WebSocket closed. Total messages received: ${messageCount}`);
             };
 
             ws.onerror = (error) => {
                 console.error("WebSocket error:", error);
             };
+
         } catch (error) {
-            console.error("Error during WebSocket execution:", error.message);
+            console.error("Error in setup:", error);
         }
     };
 
