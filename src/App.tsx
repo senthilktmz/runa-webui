@@ -44,6 +44,44 @@ const NODE_TYPE_DEFINITIONS = {
     ],
 };
 
+const WebSocketMessages = ({ messages, isConnected }) => {
+    return (
+        <div className="w-full border rounded-lg shadow-sm">
+            <div className="py-3 px-4 bg-gray-100 border-b">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">WebSocket Messages</h3>
+                    <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+                        <span className="text-sm">{isConnected ? 'Connected' : 'Disconnected'}</span>
+                    </div>
+                </div>
+            </div>
+            <div className="p-4">
+                <div className="h-64 overflow-y-auto border rounded-lg bg-gray-50">
+                    {messages.length === 0 ? (
+                        <div className="flex items-center justify-center h-full text-gray-500">
+                            No messages yet
+                        </div>
+                    ) : (
+                        <div className="space-y-2 p-4">
+                            {messages.map(msg => (
+                                <div key={msg.id} className="p-3 bg-white rounded-lg shadow-sm">
+                                    <div className="flex justify-between items-start mb-1">
+                                        <span className="text-xs text-gray-500">{msg.timestamp}</span>
+                                    </div>
+                                    <pre className="text-sm whitespace-pre-wrap break-words font-mono bg-gray-50 p-2 rounded">
+                                        {msg.content}
+                                    </pre>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const initialNodes = [];
 const initialEdges = [];
 
@@ -58,6 +96,8 @@ const App = () => {
         NODE_TYPE_DEFINITIONS.node_type_definitions[0].name
     );
     const [isEditorPopupOpen, setIsEditorPopupOpen] = useState(false);
+    const [wsMessages, setWsMessages] = useState([]);
+    const [wsConnected, setWsConnected] = useState(false);
     //
     const addNode = () => {
         const id = `${nodes.length + 1}`;
@@ -132,6 +172,10 @@ const App = () => {
 
     const toggleEditorPopup = () => {
         setIsEditorPopupOpen(!isEditorPopupOpen);
+    };
+
+    const clearMessages = () => {
+        setWsMessages([]);
     };
 
     const getParentChildMap = () => {
@@ -255,7 +299,6 @@ const App = () => {
         }
     };
 
-
     const runWebSocketFlow = async () => {
         const keyBase64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
         const plaintext = JSON.stringify({
@@ -277,58 +320,65 @@ const App = () => {
             },
         });
 
-        let messageCount = 0;
-
         try {
             const encryptedPayload = await encryptPayload(keyBase64, plaintext);
             console.log("Encrypted payload ready");
 
             const ws = new WebSocket("ws://127.0.0.1:9191/exec_task_set");
 
-            // Setup message handler before sending
             ws.onmessage = (event) => {
-                messageCount++;
-                console.log(`\nMessage ${messageCount} received:`, event.data);
+                console.log("Message received:", event.data);
                 try {
                     const jsonData = JSON.parse(event.data);
-                    console.log('Parsed JSON:', JSON.stringify(jsonData, null, 2));
+                    setWsMessages(prev => [...prev, {
+                        id: Date.now(),
+                        content: JSON.stringify(jsonData, null, 2),
+                        timestamp: new Date().toLocaleTimeString()
+                    }]);
                 } catch {
-                    console.log('Raw message (non-JSON):', event.data);
+                    setWsMessages(prev => [...prev, {
+                        id: Date.now(),
+                        content: event.data,
+                        timestamp: new Date().toLocaleTimeString()
+                    }]);
                 }
             };
 
             ws.onopen = () => {
                 console.log("WebSocket Connected");
+                setWsConnected(true);
                 ws.send(JSON.stringify(encryptedPayload));
                 console.log("Sent encrypted payload");
             };
 
             ws.onclose = () => {
-                console.log(`WebSocket closed. Total messages received: ${messageCount}`);
+                console.log("WebSocket closed");
+                setWsConnected(false);
             };
 
             ws.onerror = (error) => {
                 console.error("WebSocket error:", error);
+                setWsConnected(false);
             };
 
         } catch (error) {
             console.error("Error in setup:", error);
+            setWsConnected(false);
         }
     };
 
     return (
-        <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+        <div style={{height: "100vh", display: "flex", flexDirection: "column"}}>
             <div style={{padding: "10px", textAlign: "center"}}>
                 <button onClick={addNode}>+ Add Node</button>
-                <button onClick={runFlow} style={{marginLeft: "10px"}}>
-                    Run
-                </button>
-                <button onClick={runWebSocketFlow} style={{marginLeft: "10px"}}>
-                    exec_task_set
-                </button>
+                <button onClick={runFlow} style={{marginLeft: "10px"}}>Run</button>
+                <button onClick={runWebSocketFlow} style={{marginLeft: "10px"}}>exec_task_set</button>
+                <button onClick={clearMessages} style={{marginLeft: "10px"}}>Clear Messages</button>
             </div>
-            <div style={{display: "flex", height: "100%"}}>
-                <div style={{ flex: 3 }}>
+
+
+            <div style={{display: "flex", height: "100%", gap: "10px", padding: "10px"}}>
+                <div style={{flex: 3}}>
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}
@@ -337,88 +387,100 @@ const App = () => {
                         onConnect={onConnect}
                         onNodeClick={onNodeClick}
                         fitView
-                        style={{ flex: 1 }}
                     >
-                        <MiniMap />
-                        <Controls />
-                        <Background />
+                        <MiniMap/>
+                        <Controls/>
+                        <Background/>
                     </ReactFlow>
                 </div>
-                {selectedNode && (
-                    <div style={{ flex: 1, padding: "10px", background: "#f4f4f4" }}>
-                        <h3>Edit Node</h3>
-                        <label>
-                            Node Name:
-                            <input
-                                type="text"
-                                value={currentNodeName}
-                                onChange={handleNameChange}
+                <div style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                    maxHeight: "100%",
+                    overflow: "hidden"
+                }}>
+                    <WebSocketMessages
+                        messages={wsMessages}
+                        isConnected={wsConnected}
+                    />
+                    {selectedNode && (
+                        <div style={{flex: 1, padding: "10px", background: "#f4f4f4", overflow: "auto"}}>
+                            <h3>Edit Node</h3>
+                            <label>
+                                Node Name:
+                                <input
+                                    type="text"
+                                    value={currentNodeName}
+                                    onChange={handleNameChange}
+                                    style={{
+                                        width: "100%",
+                                        marginBottom: "10px",
+                                        padding: "5px",
+                                        fontSize: "16px",
+                                    }}
+                                />
+                            </label>
+                            <label>
+                                Node Category:
+                                <select
+                                    value={currentNodeCategory}
+                                    onChange={handleCategoryChange}
+                                    style={{
+                                        width: "100%",
+                                        marginBottom: "10px",
+                                        padding: "5px",
+                                        fontSize: "16px",
+                                    }}
+                                >
+                                    {NODE_TYPE_DEFINITIONS.node_type_definitions.map((def) => (
+                                        <option key={def.name} value={def.name}>
+                                            {def.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label>
+                                Script:
+                                <AceEditor
+                                    mode={currentNodeType}
+                                    theme="monokai"
+                                    value={currentNodeScript}
+                                    onChange={handleScriptChange}
+                                    name="script_editor"
+                                    editorProps={{$blockScrolling: true}}
+                                    setOptions={{useWorker: false}}
+                                    width="100%"
+                                    height="150px"
+                                />
+                            </label>
+                            <button
+                                onClick={toggleEditorPopup}
                                 style={{
-                                    width: "100%",
-                                    marginBottom: "10px",
-                                    padding: "5px",
+                                    marginTop: "10px",
+                                    padding: "10px 15px",
                                     fontSize: "16px",
-                                }}
-                            />
-                        </label>
-                        <label>
-                            Node Category:
-                            <select
-                                value={currentNodeCategory}
-                                onChange={handleCategoryChange}
-                                style={{
-                                    width: "100%",
-                                    marginBottom: "10px",
-                                    padding: "5px",
-                                    fontSize: "16px",
+                                    cursor: "pointer",
                                 }}
                             >
-                                {NODE_TYPE_DEFINITIONS.node_type_definitions.map((def) => (
-                                    <option key={def.name} value={def.name}>
-                                        {def.name}
-                                    </option>
-                                ))}
-                            </select>
-                        </label>
-                        <label>
-                            Script:
-                            <AceEditor
-                                mode={currentNodeType}
-                                theme="monokai"
-                                value={currentNodeScript}
-                                onChange={handleScriptChange}
-                                name="script_editor"
-                                editorProps={{ $blockScrolling: true }}
-                                setOptions={{ useWorker: false }}
-                                width="100%"
-                                height="150px"
-                            />
-                        </label>
-                        <button
-                            onClick={toggleEditorPopup}
-                            style={{
-                                marginTop: "10px",
-                                padding: "10px 15px",
-                                fontSize: "16px",
-                                cursor: "pointer",
-                            }}
-                        >
-                            Expand Editor
-                        </button>
-                        <button
-                            onClick={saveNodeData}
-                            style={{
-                                marginTop: "10px",
-                                padding: "10px 15px",
-                                fontSize: "16px",
-                                marginLeft: "10px",
-                                cursor: "pointer",
-                            }}
-                        >
-                            Save
-                        </button>
-                    </div>
-                )}
+                                Expand Editor
+                            </button>
+                            <button
+                                onClick={saveNodeData}
+                                style={{
+                                    marginTop: "10px",
+                                    padding: "10px 15px",
+                                    fontSize: "16px",
+                                    marginLeft: "10px",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                Save
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             {/* Popup Editor */}
@@ -445,8 +507,8 @@ const App = () => {
                         value={currentNodeScript}
                         onChange={handleScriptChange}
                         name="popup_script_editor"
-                        editorProps={{ $blockScrolling: true }}
-                        setOptions={{ useWorker: false }}
+                        editorProps={{$blockScrolling: true}}
+                        setOptions={{useWorker: false}}
                         width="100%"
                         height="calc(100% - 50px)"
                     />
