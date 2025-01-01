@@ -106,7 +106,7 @@ const App = () => {
             data: {
                 label: `Node ${id}`,
                 script: "",
-                type: "python",
+                type: "bash",
                 category: NODE_TYPE_DEFINITIONS.node_type_definitions[0].name,
             },
             position: { x: Math.random() * 400, y: Math.random() * 400 },
@@ -299,56 +299,93 @@ const App = () => {
         }
     };
 
-    const runWebSocketFlow = async () => {
-        const keyBase64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
-        const plaintext = JSON.stringify({
-            request_params: {
-                request_type: "command_execution",
-                command_params: {
-                    command_type: "run_bash_script",
-                    run_mode: "async",
-                    command_data: {
-                        run_bash_script_data: {
-                            script_data: "ZWNobyAnSGVsbG8sIFdvcmxkIScK",
-                            script_data_type: "bash_script_b64_utf8",
-                        },
-                    },
-                    command_progress_info_params: {
-                        stream_progress_type: "realtime",
-                    },
-                },
-            },
+    const serializeGraph0 = (nodes, edges) => {
+        const nodeMap = new Map();
+
+        // Populate nodes into a map
+        nodes.forEach((node) => {
+            nodeMap.set(node.id, { ...node.data, children: [] });
         });
 
+        // Map edges to establish parent-child relationships
+        edges.forEach((edge) => {
+            if (nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
+                nodeMap.get(edge.source).children.push(edge.target);
+            }
+        });
+
+        // Convert to a JSON object
+        const serializedGraph = {};
+        nodeMap.forEach((value, key) => {
+            serializedGraph[key] = value;
+        });
+
+        return JSON.stringify(serializedGraph, null, 2); // Pretty-printed JSON
+    };
+
+    const serializeGraph = (nodes, edges) => {
+        const nodeMap = new Map();
+
+        // Populate nodes into a map
+        nodes.forEach((node) => {
+            nodeMap.set(node.id, { ...node.data, children: [] });
+        });
+
+        // Map edges to establish parent-child relationships
+        edges.forEach((edge) => {
+            if (nodeMap.has(edge.source) && nodeMap.has(edge.target)) {
+                nodeMap.get(edge.source).children.push(edge.target);
+            }
+        });
+
+        // Convert the map to an array
+        const taskSetNodes = Array.from(nodeMap.values());
+
+        // Wrap the array in the desired structure
+        const serializedGraph = {
+            task_set_nodes: taskSetNodes,
+        };
+
+        return JSON.stringify(serializedGraph, null, 2); // Pretty-printed JSON
+    };
+
+
+    const runWebSocketFlow = async () => {
+        // Serialize the current graph
+        const serializedGraph = serializeGraph(nodes, edges);
+
         try {
-            const encryptedPayload = await encryptPayload(keyBase64, plaintext);
+            const keyBase64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
+
+            console.log("============="+ typeof (serializedGraph) +"=================");
+            console.log(serializedGraph);
+            console.log("uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu")
+
+            // Encrypt the serialized graph
+            const encryptedPayload = await encryptPayload(keyBase64, serializedGraph);
             console.log("Encrypted payload ready");
 
             const ws = new WebSocket("ws://127.0.0.1:9191/exec_task_set");
 
             ws.onmessage = (event) => {
                 console.log("Message received:", event.data);
-                try {
-                    const jsonData = JSON.parse(event.data);
-                    setWsMessages(prev => [...prev, {
-                        id: Date.now(),
-                        content: JSON.stringify(jsonData, null, 2),
-                        timestamp: new Date().toLocaleTimeString()
-                    }]);
-                } catch {
-                    setWsMessages(prev => [...prev, {
+                setWsMessages((prev) => [
+                    ...prev,
+                    {
                         id: Date.now(),
                         content: event.data,
-                        timestamp: new Date().toLocaleTimeString()
-                    }]);
-                }
+                        timestamp: new Date().toLocaleTimeString(),
+                    },
+                ]);
             };
 
             ws.onopen = () => {
                 console.log("WebSocket Connected");
                 setWsConnected(true);
+
+                // Send the encrypted serialized graph
                 ws.send(JSON.stringify(encryptedPayload));
-                console.log("Sent encrypted payload");
+                console.log("Sent encrypted serialized graph");
             };
 
             ws.onclose = () => {
@@ -360,9 +397,8 @@ const App = () => {
                 console.error("WebSocket error:", error);
                 setWsConnected(false);
             };
-
         } catch (error) {
-            console.error("Error in setup:", error);
+            console.error("Error in WebSocket setup:", error);
             setWsConnected(false);
         }
     };
@@ -378,7 +414,7 @@ const App = () => {
 
 
             <div style={{display: "flex", height: "100%", gap: "10px", padding: "10px"}}>
-                <div style={{flex: 3}}>
+            <div style={{flex: 3}}>
                     <ReactFlow
                         nodes={nodes}
                         edges={edges}
