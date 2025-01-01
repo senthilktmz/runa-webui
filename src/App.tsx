@@ -60,10 +60,26 @@ const WebSocketMessages = ({ messages, isConnected }) => {
     };
 
     return (
-        <div className="w-full border rounded-lg shadow-sm">
+        <div
+            style={{
+                position: "fixed",
+                bottom: 0,
+                left: 0,
+                width: "100%",
+                height: "200px", // Default height for the resizable component
+                minHeight: "100px", // Minimum height
+                maxHeight: "50vh", // Maximum height (50% of the viewport)
+                resize: "vertical", // Enable vertical resizing
+                overflow: "auto", // Enable scrollbars if content overflows
+                borderTop: "2px solid #ccc",
+                backgroundColor: "#eee8f8",
+                zIndex: 1000,
+                padding: "10px",
+            }}
+        >
             <div className="py-3 px-4 bg-gray-100 border-b">
                 <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">WebSocket Messages</h3>
+                    <h3 className="text-lg font-semibold">Execution Output</h3>
                     <div className="flex items-center gap-2">
                         <div
                             className={`w-2 h-2 rounded-full ${
@@ -76,43 +92,31 @@ const WebSocketMessages = ({ messages, isConnected }) => {
                     </div>
                 </div>
             </div>
-            <div className="p-4">
-                {/* Scrollable container */}
-                <div
-                    style={{
-                        maxHeight: "400px", // Set the height limit
-                        overflowY: "auto", // Enable vertical scrolling
-                        border: "1px solid #ccc",
-                        borderRadius: "8px",
-                        padding: "10px",
-                        backgroundColor: "#f9f9f9",
-                    }}
-                >
-                    {messages.length === 0 ? (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                            No messages yet
-                        </div>
-                    ) : (
-                        <div className="space-y-2">
-                            {messages.map((msg) => (
-                                <div
-                                    key={msg.id}
-                                    className="p-3 bg-white rounded-lg shadow-sm cursor-pointer"
-                                    onClick={() => handleOpenPopup(msg)}
-                                >
-                                    <div className="flex justify-between items-start mb-1">
-                                        <span className="text-xs text-gray-500">
-                                            {msg.timestamp}
-                                        </span>
-                                    </div>
-                                    <pre className="text-sm whitespace-pre-wrap break-words font-mono bg-gray-50 p-2 rounded">
-                                        {msg.content}
-                                    </pre>
+            <div>
+                {messages.length === 0 ? (
+                    <div className="flex items-center justify-center h-full text-gray-500">
+                        No messages yet
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {messages.map((msg) => (
+                            <div
+                                key={msg.id}
+                                className="p-3 bg-white rounded-lg shadow-sm cursor-pointer"
+                                onClick={() => handleOpenPopup(msg)}
+                            >
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="text-xs text-gray-500">
+                                        {msg.timestamp}
+                                    </span>
                                 </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                                <pre className="text-sm whitespace-pre-wrap break-words font-mono bg-gray-50 p-2 rounded">
+                                    {msg.content}
+                                </pre>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
             {isPopupOpen && selectedMessage && (
                 <div
@@ -126,9 +130,9 @@ const WebSocketMessages = ({ messages, isConnected }) => {
                         backgroundColor: "#fff",
                         border: "1px solid #ccc",
                         boxShadow: "0 0 10px rgba(0, 0, 0, 0.3)",
-                        zIndex: 1000,
+                        zIndex: 2000,
                         padding: "20px",
-                        overflowY: "auto", // Ensure scrolling in the popup
+                        overflowY: "auto",
                     }}
                 >
                     <h3 className="mb-4 font-bold text-lg">Detailed Message</h3>
@@ -154,8 +158,6 @@ const WebSocketMessages = ({ messages, isConnected }) => {
         </div>
     );
 };
-
-//export default WebSocketMessages;
 
 //export default WebSocketMessages;
 
@@ -427,6 +429,13 @@ const App = () => {
     };
 
 
+    const formatTimestamp = () => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ` +
+            `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}.` +
+            `${String(now.getMilliseconds()).padStart(3, '0')}`;
+    };
+
     const runWebSocketFlow = async () => {
         // Serialize the current graph
         const serializedGraph = serializeGraph(nodes, edges);
@@ -444,28 +453,17 @@ const App = () => {
 
             const ws = new WebSocket("ws://127.0.0.1:9191/exec_task_set");
 
-            // ws.onmessage = (event) => {
-            //     console.log("Message received:", event.data);
-            //     setWsMessages((prev) => [
-            //         ...prev,
-            //         {
-            //             id: Date.now(),
-            //             content: event.data,
-            //             timestamp: new Date().toLocaleTimeString(),
-            //         },
-            //     ]);
-            // };
-
             ws.onmessage = (event) => {
-                const now = new Date();
-                const timestamp = `${now.toLocaleTimeString()}.${now.getMilliseconds()} ms`;
-                console.log("Message received:", event.data);
+                const timestamp = formatTimestamp(); // Get the formatted timestamp
+                const cleanMessage = event.data.trim(); // Remove any leading or trailing newlines
+                const message = `${timestamp} - ${cleanMessage}`; // Combine timestamp and cleaned message
+
+                // Update the WebSocket messages state
                 setWsMessages((prev) => [
                     ...prev,
                     {
                         id: Date.now(),
-                        content: event.data,
-                        timestamp,
+                        content: message, // Store combined message for UI display
                     },
                 ]);
             };
@@ -534,81 +532,97 @@ const App = () => {
                             isConnected={wsConnected}
                         />
                     </div>
-                        {selectedNode && (
-                            <div style={{flex: 1, padding: "10px", background: "#f4f4f4", overflow: "auto"}}>
-                                <h3>Edit Node</h3>
-                                <label>
-                                    Node Name:
-                                    <input
-                                        type="text"
-                                        value={currentNodeName}
-                                        onChange={handleNameChange}
-                                        style={{
-                                            width: "100%",
-                                            marginBottom: "10px",
-                                            padding: "5px",
-                                            fontSize: "16px",
-                                        }}
-                                    />
-                                </label>
-                                <label>
-                                    Node Category:
-                                    <select
-                                        value={currentNodeCategory}
-                                        onChange={handleCategoryChange}
-                                        style={{
-                                            width: "100%",
-                                            marginBottom: "10px",
-                                            padding: "5px",
-                                            fontSize: "16px",
-                                        }}
-                                    >
-                                        {NODE_TYPE_DEFINITIONS.node_type_definitions.map((def) => (
-                                            <option key={def.name} value={def.name}>
-                                                {def.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label>
-                                    Script:
-                                    <AceEditor
-                                        mode={currentNodeType}
-                                        theme="monokai"
-                                        value={currentNodeScript}
-                                        onChange={handleScriptChange}
-                                        name="script_editor"
-                                        editorProps={{$blockScrolling: true}}
-                                        setOptions={{useWorker: false}}
-                                        width="100%"
-                                        height="150px"
-                                    />
-                                </label>
-                                <button
-                                    onClick={toggleEditorPopup}
+                    {selectedNode && (
+                        <div
+                            style={{
+                                position: "absolute", // Make the panel absolute
+                                top: "10px",          // Distance from the top
+                                right: "10px",        // Distance from the right
+                                width: "300px",       // Set a fixed width
+                                background: "#f4f4f4",
+                                border: "1px solid #ccc",
+                                borderRadius: "8px",
+                                boxShadow: "0 0 10px rgba(0, 0, 0, 0.1)",
+                                padding: "10px",
+                                zIndex: 1000,         // Ensure it appears on top
+                                overflow: "auto",     // Enable scrolling if the content overflows
+                                maxHeight: "80vh",    // Restrict the height to avoid overflowing the window
+                            }}
+                        >
+                            <h3>Edit Node</h3>
+                            <label>
+                                Node Name:
+                                <input
+                                    type="text"
+                                    value={currentNodeName}
+                                    onChange={handleNameChange}
                                     style={{
-                                        marginTop: "10px",
-                                        padding: "10px 15px",
+                                        width: "100%",
+                                        marginBottom: "10px",
+                                        padding: "5px",
                                         fontSize: "16px",
-                                        cursor: "pointer",
+                                    }}
+                                />
+                            </label>
+                            <label>
+                                Node Category:
+                                <select
+                                    value={currentNodeCategory}
+                                    onChange={handleCategoryChange}
+                                    style={{
+                                        width: "100%",
+                                        marginBottom: "10px",
+                                        padding: "5px",
+                                        fontSize: "16px",
                                     }}
                                 >
-                                    Expand Editor
-                                </button>
-                                <button
-                                    onClick={saveNodeData}
-                                    style={{
-                                        marginTop: "10px",
-                                        padding: "10px 15px",
-                                        fontSize: "16px",
-                                        marginLeft: "10px",
-                                        cursor: "pointer",
-                                    }}
-                                >
-                                    Save
-                                </button>
-                            </div>
-                        )}
+                                    {NODE_TYPE_DEFINITIONS.node_type_definitions.map((def) => (
+                                        <option key={def.name} value={def.name}>
+                                            {def.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label>
+                                Script:
+                                <AceEditor
+                                    mode={currentNodeType}
+                                    theme="monokai"
+                                    value={currentNodeScript}
+                                    onChange={handleScriptChange}
+                                    name="script_editor"
+                                    editorProps={{ $blockScrolling: true }}
+                                    setOptions={{ useWorker: false }}
+                                    width="100%"
+                                    height="150px"
+                                />
+                            </label>
+                            <button
+                                onClick={toggleEditorPopup}
+                                style={{
+                                    marginTop: "10px",
+                                    padding: "10px 15px",
+                                    fontSize: "16px",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                Expand Editor
+                            </button>
+                            <button
+                                onClick={saveNodeData}
+                                style={{
+                                    marginTop: "10px",
+                                    padding: "10px 15px",
+                                    fontSize: "16px",
+                                    marginLeft: "10px",
+                                    cursor: "pointer",
+                                }}
+                            >
+                                Save
+                            </button>
+                        </div>
+                    )}
+
                     </div>
                 </div>
 
